@@ -15,10 +15,19 @@
 
 #define PORT 8888
 
-#if 1
-#define DbgPrint(f, x...)      printf("Dbg: %s():" f, __func__, ##x)
+#define __LOG_DEBUG             1
+#define __LOG_ERROR             1
+
+#if __LOG_DEBUG
+#define DbgPrint(f, x...)      printf("DBG: %s():" f, __func__, ##x)
 #else
 #define DbgPrint(f, x...)
+#endif
+
+#if __LOG_ERROR
+#define ErrPrint(f, x...)      fprintf(stderr, "ERR: %s():" f, __func__, ##x)
+#else
+#define ErrPrint(f, x...)
 #endif
 
 struct cls_struct

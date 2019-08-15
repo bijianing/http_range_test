@@ -1,3 +1,7 @@
+all: cli mht
+
+cli : cli.c
+	gcc -g -o cli cli.c -lcurl
 
 mht : mht.c
-	gcc -o mht mht.c -lmicrohttpd
+	gcc -g -o mht mht.c -lmicrohttpd

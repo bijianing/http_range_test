@@ -6,13 +6,25 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <curl/curl.h>
+#include <error.h>
+#include <errno.h>
 
-#if 1
-#define DbgPrint(f, x...)      printf("Dbg: %s():" f, __func__, ##x)
+#define __LOG_DEBUG             1
+#define __LOG_ERROR             1
+
+#if __LOG_DEBUG
+#define DbgPrint(f, x...)      printf("DBG: %s():" f, __func__, ##x)
 #else
 #define DbgPrint(f, x...)
+#endif
+
+#if __LOG_ERROR
+#define ErrPrint(f, x...)      fprintf(stderr, "ERR: %s():" f, __func__, ##x)
+#else
+#define ErrPrint(f, x...)
 #endif
 
 #define FN "dl_out"
@@ -23,13 +35,14 @@ size_t write_data(void *ptr, size_t size, size_t nmemb, FILE *stream)
     return written;
 }
 
-int dl(const char *fn, char range_header)
+int dl(const char *fn, char *range_header)
 {
     CURL *curl;
     struct curl_slist *list = NULL;
     FILE *fp;
     int ret = 0;
     char path[128];
+        struct stat stat_buf;
 
     sprintf(path, "http://localhost:8888/%s", fn);
 
@@ -41,9 +54,13 @@ int dl(const char *fn, char range_header)
 
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
 
-    if (unlink(FN) != 0) {
-        ret = 1;
-        goto out;
+    if (stat(FN, &stat_buf) == 0)
+    {
+        if (unlink(FN) != 0)
+        {
+            ret = 1;
+            goto out;
+        }
     }
 
     if ((fp = fopen(FN, "wb")) == NULL) {
@@ -72,15 +89,62 @@ out:
 }
 
 #define BUFSZ   (2*1024*1024)
-int compare_out(const char *fn1, const char *fn2)
+int compare_out(const char *fdl, const char *forg, long start, long end)
 {
-    int ret;
+    int ret = -1;
     int fd1, fd2;
+    int sz1, sz2;
     char buf1[BUFSZ], buf2[BUFSZ];
 
-    if ((fd1 = open(fn1, O_RDONLY)) < 0) {
-
+    if ((fd1 = open(fdl, O_RDONLY)) < 0) {
+        ErrPrint("open %s failed: %s\n", fdl, strerror(errno));
+        goto out;
     }
+
+    if ((fd2 = open(forg, O_RDONLY)) < 0) {
+        ErrPrint("open %s failed: %s\n", forg, strerror(errno));
+        goto out;
+    }
+
+    if (lseek(fd2, start, SEEK_SET) < 0) {
+        ErrPrint("lseek() failed:%s\n", strerror(errno));
+        goto out;
+    }
+
+    while(1) {
+        if ((sz1 = read(fd1, buf1, BUFSZ)) < 0) {
+            ErrPrint("read() f1 failed:%s\n", strerror(errno));
+            goto out;
+        }
+        if ((sz2 = read(fd2, buf2, BUFSZ)) < 0) {
+            ErrPrint("read() f2 failed:%s\n", strerror(errno));
+            goto out;
+        }
+
+        if (sz1 != sz2) {
+            DbgPrint("sz1:%d, sz2:%d\n", sz1, sz2);
+            ret = 1;
+            goto out;
+        }
+
+        if (sz1 == 0) {
+            DbgPrint("data equal\n");
+            break;
+        }
+
+        if (memcmp(buf1, buf2, sz1) != 0) {
+            DbgPrint("data not equal\n");
+            ret = 1;
+            goto out;
+        }
+    }
+
+    ret = 0;
+
+out:
+    close(fd1);
+    close(fd2);
+    return ret;
 }
 
 void usage(const char *cmd)
@@ -92,6 +156,7 @@ int main(int argc, const char *argv[])
 {
     long start, end;
     char rheader[128];
+    int compare_res;
 
     if (argc != 4) {
         usage(argv[0]);
@@ -106,6 +171,20 @@ int main(int argc, const char *argv[])
         return -3;
     }
     sprintf(rheader, "Range: bytes=%l-%l", start, end);
+
+    if (dl(argv[1], rheader) < 0) {
+        ErrPrint("Download failed!\n");
+        return -4;
+    }
+
+    compare_res = compare_out(FN, argv[1], start, end);
+    if (compare_res < 0) {
+        return -5;
+    } else if (compare_res == 0) {
+        return 0;
+    } else {
+        return 1;
+    }
 
     return EXIT_SUCCESS;
 }

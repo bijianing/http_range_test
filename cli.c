@@ -93,7 +93,7 @@ int compare_out(const char *fdl, const char *forg, long start, long end)
 {
     int ret = -1;
     int fd1, fd2;
-    int sz1, sz2;
+    int sz1, sz2, sz, readsz;
     char buf1[BUFSZ], buf2[BUFSZ];
 
     if ((fd1 = open(fdl, O_RDONLY)) < 0) {
@@ -111,12 +111,18 @@ int compare_out(const char *fdl, const char *forg, long start, long end)
         goto out;
     }
 
+    sz = end - start + 1;
     while(1) {
-        if ((sz1 = read(fd1, buf1, BUFSZ)) < 0) {
+        if (sz > BUFSZ) {
+            readsz = BUFSZ;
+        } else {
+            readsz = sz;
+        }
+        if ((sz1 = read(fd1, buf1, readsz)) < 0) {
             ErrPrint("read() f1 failed:%s\n", strerror(errno));
             goto out;
         }
-        if ((sz2 = read(fd2, buf2, BUFSZ)) < 0) {
+        if ((sz2 = read(fd2, buf2, readsz)) < 0) {
             ErrPrint("read() f2 failed:%s\n", strerror(errno));
             goto out;
         }
@@ -137,6 +143,8 @@ int compare_out(const char *fdl, const char *forg, long start, long end)
             ret = 1;
             goto out;
         }
+
+        sz -= sz1;
     }
 
     ret = 0;

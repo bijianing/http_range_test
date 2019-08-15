@@ -5,3 +5,7 @@ cli : cli.c
 
 mht : mht.c
 	gcc -g -o mht mht.c -lmicrohttpd
+
+
+clean: 
+	rm -f cli mht

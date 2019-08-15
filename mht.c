@@ -33,6 +33,8 @@
 struct cls_struct
 {
     int fd;
+    long start;
+    long end;
 } data_cls;
 
 
@@ -45,9 +47,9 @@ long readdata(void *cls, unsigned long pos, char *buf, unsigned long max)
     int fd = dcls->fd;
     int ret;
 
-    DbgPrint("pos:%08lx buf:%p size:%08lx\n", pos, buf, max);
+//    DbgPrint("pos:%08lx buf:%p size:%08lx\n", pos, buf, max);
 
-    if (lseek(fd, pos, SEEK_SET) < 0) {
+    if (lseek(fd, dcls->start + pos, SEEK_SET) < 0) {
         fprintf(stderr, "lseek() failed:%s\n", strerror(errno));
         return -1;
     }
@@ -80,6 +82,7 @@ static int answer_to_connection(void *cls, struct MHD_Connection *connection,
     {
         struct stat buffer;
         char path[128];
+        const char *rheader;
 
         sprintf(path, ".%s", url);
         if (stat(path, &buffer) < 0)
@@ -88,13 +91,26 @@ static int answer_to_connection(void *cls, struct MHD_Connection *connection,
             return MHD_NO;
         }
 
+        rheader = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Range");
+        if (rheader) {
+            if (sscanf(rheader, "bytes=%ld-%ld", &data_cls.start, &data_cls.end) != 2) {
+                data_cls.start = 0;
+                data_cls.end = buffer.st_size;
+            } else {
+
+            }
+        } else {
+            data_cls.start = 0;
+            data_cls.end = buffer.st_size;
+        }
+
         if ((data_cls.fd = open(path, O_RDONLY)) < 0)
         {
             fprintf(stderr, "open(%s) failed:%s\n", path, strerror(errno));
             return MHD_NO;
         }
 
-        response = MHD_create_response_from_callback(buffer.st_size, buffer.st_blksize, readdata, &data_cls, freedata);
+        response = MHD_create_response_from_callback(data_cls.end - data_cls.start, buffer.st_blksize, readdata, &data_cls, freedata);
     }
     else
     {
